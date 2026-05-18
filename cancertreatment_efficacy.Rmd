@@ -1,0 +1,490 @@
+---
+title: "Cancer Treatment Efficacy: Statistical Inference"
+author: "Aashi Sachania"
+date: "2026-05-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("moderndive")
+#install.packages("infer")
+library(ggplot2)
+library(dplyr)
+library(moderndive)
+library(infer)
+```
+
+# Part I: Confidence Intervals — Estimating the Effect of Chloroquine on Glioblastoma
+
+This analysis examines data from a real research study investigating chloroquine as a potential treatment for glioblastoma, the most common and aggressive form of brain cancer. In the study, glioblastoma cells were grown in cultures and administered either chloroquine or a control solution. After four days, the remaining cells in each culture were counted. The goal of this analysis is to estimate the effect of chloroquine by constructing a 95% bootstrapped confidence interval for the difference in mean cell counts between the two conditions.
+
+### Acquire Data
+```{r}
+glio <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/glio.csv",
+                 stringsAsFactors = TRUE)
+```
+
+### Explore Data
+```{r}
+glimpse(glio)
+```
+
+The distribution of cell counts across both conditions is shown below.
+```{r}
+glio %>%
+  ggplot(aes(x = Cell_Count)) +
+  geom_histogram() +
+  facet_wrap(~Condition) +
+  labs(title = "Distribution of Cell_Counts by Treatment")
+```
+
+### Point Estimate
+The difference in mean cell counts between the chloroquine and control conditions was calculated as an initial estimate of the treatment effect.
+
+```{r}
+glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control"))
+```
+
+### Interpreting the Point Estimate
+The point estimate was approximately -626, indicating that chloroquine-treated cultures had on average 626 fewer cells than control cultures. This value serves as the best available estimate of chloroquine's effect in the broader population of glioblastoma cultures. However, since this is a single estimate from one sample, it carries uncertainty — which the confidence interval below addresses.
+
+### Bootstrapping: Generating a Sampling Distribution
+To quantify that uncertainty, bootstrapping was used to simulate 1,000 resampled datasets from the original data.
+
+```{r}
+new_df <- glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  generate(reps = 1000, type = 'bootstrap')
+```
+
+```{r}
+glimpse(new_df)
+```
+
+The graph below shows the distribution of cell counts within a single bootstrap replicate, illustrating what one simulated dataset looks like.
+```{r}
+new_df %>%
+  filter(replicate == 1) %>%
+  ggplot(aes(x = Cell_Count)) +
+  geom_histogram() +  
+  facet_wrap(~Condition)
+```
+
+### Calculating the Bootstrap Distribution of Differences
+The difference in means was calculated for each of the 1,000 bootstrap replicates, producing a sampling distribution of the estimated treatment effect.
+
+```{r}
+new_df2 <- glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  generate(reps = 1000, type = 'bootstrap') %>%
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control"))
+```
+
+The histogram below shows the full bootstrap distribution — each bar represents the estimated difference in means from one simulated dataset.
+```{r}
+new_df2 %>%
+  ggplot(aes(x = stat)) +
+  geom_histogram() 
+```
+
+### 95% Confidence Interval
+The percentile method was applied to extract the 95% confidence interval from the bootstrap distribution.
+
+```{r}
+glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  generate(reps = 1000, type = 'bootstrap') %>%
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control")) %>%
+  get_confidence_interval(level = 0.95, type = "percentile")
+```
+
+The confidence interval suggests that while the exact population-level effect of chloroquine is unknown, it plausibly reduces average glioblastoma cell count by somewhere between approximately 521 and 742 cells. This range excludes zero, providing meaningful evidence that the treatment effect is real rather than a product of sampling variability.
+
+# Part II: Extended Analyses Using Confidence Intervals
+
+This section applies the same bootstrapping and confidence interval framework to three additional datasets, each addressing a distinct research question.
+
+## Analysis 1: Mean Birthweight in North Carolina
+This analysis estimates the average birthweight for live births in North Carolina using a random sample of 800 births from state records.
+
+### Acquire Data
+```{r}
+births <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/births.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(births)
+```
+
+The distribution of birthweights across the sample is shown below.
+```{r}
+births %>%
+  ggplot(aes(x = weight)) +
+  geom_histogram(bins = 30) +
+  labs(title = "Birthweights in NC births")
+```
+
+### Point Estimate
+```{r}
+births %>%
+  specify(response = weight) %>%
+  calculate(stat = "mean")
+```
+
+### 95% Confidence Interval
+```{r}
+births %>%
+  specify(response = weight) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "mean") %>%
+  get_confidence_interval(level = 0.95, type = "percentile")
+```
+
+### Interpretation
+The 95% confidence interval falls approximately between 7.1 and 7.3 lbs. This means that if a full census of North Carolina newborns were conducted, an average birthweight of 7.5 lbs would fall outside this range and would be a surprising result — suggesting 7.5 lbs is not a plausible population mean given this sample.
+
+## Analysis 2: Handedness and Pawedness in Dogs
+This analysis examines whether a dog's paw preference is associated with the handedness of its owner — specifically, whether dogs with right-handed owners are more likely to be right-pawed.
+
+### Acquire Data
+```{r}
+pawedness_dat <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/pawedness.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(pawedness_dat)
+```
+
+```{r}
+pawedness_dat %>%
+  ggplot(aes(Owner, fill = Dog)) + 
+  geom_bar() +
+  labs(title = "Dog Pawedness based on Owner Handedness")
+```
+
+### Point Estimate
+```{r}
+pawedness_dat %>%
+  specify(formula = Dog ~ Owner, success = "Right-Pawed") %>%
+  calculate(stat = "diff in props", order = c("Right-Handed", "Left-Handed"))
+```
+
+### 95% Confidence Interval
+```{r}
+pawedness_dat %>%
+  specify(formula = Dog ~ Owner, success = "Right-Pawed") %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "diff in props", order = c("Right-Handed", "Left-Handed")) %>%
+  get_confidence_interval(level = 0.95, type = "percentile")
+```
+
+### Interpretation
+The confidence interval falls approximately between -0.03 and 0.30 — a range that includes zero. This means there is not enough evidence to confidently conclude that dogs with right-handed owners are more likely to be right-pawed. The direction of the effect, if any, remains uncertain; dogs with right-handed owners could even be left-pawed more often than those with left-handed owners.
+
+## Analysis 3: Estimating the Rate of Hippocampal Atrophy in Epilepsy
+This analysis returns to the epilepsy dataset to estimate the slope of the relationship between ipsilateral hippocampal volume and years since diagnosis — that is, how much the seizure-origin hippocampus shrinks per additional year of living with epilepsy.
+
+### Acquire Data
+```{r}
+epilepsy_dat <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/EpilepsyHC.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(epilepsy_dat)
+```
+
+```{r}
+epilepsy_dat %>%
+  ggplot(aes(x = Years, y = IpsilateralHC)) + 
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Ipsilateral HC Volume based on Years since Epilepsy Diagnosis")
+```
+
+### Point Estimate
+```{r}
+epilepsy_dat %>%
+  specify(formula = IpsilateralHC ~ Years) %>%
+  calculate(stat = "slope")
+```
+
+### 95% Confidence Interval
+```{r}
+epilepsy_dat %>%
+  specify(formula = IpsilateralHC ~ Years) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "slope") %>%
+  get_confidence_interval(level = 0.95, type = "percentile")
+```
+
+### Interpretation
+The confidence interval falls approximately between -0.0104 and -0.0065. Since the entire interval is negative, all plausible estimates of the slope indicate that the ipsilateral hippocampus tends to be smaller in individuals who have lived with epilepsy longer. This provides consistent evidence that disease duration is associated with progressive atrophy on the seizure-origin side.
+
+# Part III: Hypothesis Testing — Evaluating Evidence for Treatment Effects
+
+This section applies permutation-based hypothesis testing to evaluate whether observed differences in the data reflect genuine population-level effects or could plausibly be explained by chance alone. The analyses revisit the glioblastoma dataset and extend the framework to three additional research questions.
+
+## Glioblastoma: Hypothesis Test for Chloroquine Efficacy
+
+The confidence interval analysis above estimated the size of chloroquine's effect. This complementary analysis asks a different question: is there sufficient statistical evidence to conclude that chloroquine reduces glioblastoma cell counts at all, regardless of the exact magnitude of the effect? A permutation test was used to answer this.
+
+### Acquire Data
+```{r}
+glio <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/glio.csv",
+                 stringsAsFactors = TRUE)
+```
+
+### Data Exploration
+```{r}
+glimpse(glio)
+```
+
+```{r}
+glio %>%
+  ggplot(aes(x = Cell_Count)) +
+  geom_histogram() +
+  facet_wrap(~Condition) +
+  labs(title = "Distribution of Cell_Counts by Treatment")
+```
+
+The distributions appear visually distinct — chloroquine cultures appear to contain substantially fewer cells than control cultures. A formal hypothesis test was conducted to evaluate whether this difference is statistically significant.
+
+### Observed Statistic
+```{r}
+obs_diff_mean_cellcount <- glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control"))
+obs_diff_mean_cellcount
+```
+
+### Null Distribution via Permutation
+A null distribution was generated using 1,000 permuted replicates, simulating a world in which condition assignment has no effect on cell count.
+```{r}
+null_distribution <- glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  hypothesize(null = "independence") %>% 
+  generate(reps = 1000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control"))
+```
+
+```{r}
+null_distribution %>%
+  visualize()
+```
+
+### Interpreting the Null Distribution
+Each value in the null distribution represents the difference in means from one simulated study in which chloroquine has no effect. The observed statistic is then compared against this distribution to calculate the p-value.
+
+### P-Value Calculation
+```{r}
+glio %>%
+  specify(formula = Cell_Count ~ Condition) %>%
+  hypothesize(null = "independence") %>% 
+  generate(reps = 1000, type = "permute") %>% 
+  calculate(stat = "diff in means", order = c("Chloroquine", "Control")) %>%
+  get_p_value(obs_stat = obs_diff_mean_cellcount, direction = "left")
+```
+
+The p-value is approximately 0, indicating that a difference as large as the one observed in the data would be extraordinarily unlikely if chloroquine had no effect. This provides strong statistical evidence that chloroquine reduces glioblastoma cell counts relative to the control condition.
+
+### A Note on Hypothesis Testing
+Hypothesis tests can provide evidence for an effect, but they cannot prove that no effect exists. A non-significant result reflects insufficient evidence given the available data — not confirmation that the null hypothesis is true. Limited sample sizes and statistical power can prevent detection of real effects, meaning absence of evidence is not evidence of absence.
+
+# Part IV: Extended Hypothesis Testing Analyses
+
+## Analysis 1: Infant Face Perception
+This analysis examines whether one-month-old infants respond differently to upright versus inverted illustrated faces — a test of whether face perception is present from birth, without prior learning. Looking time was used as the measure of visual interest.
+
+### Acquire Data
+```{r}
+face_df <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/face_df.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(face_df)
+```
+
+```{r}
+face_df %>% 
+  ggplot(aes(x = Condition, y = LookingTime)) +
+  geom_boxplot() +
+  geom_point() 
+```
+
+### Observed Difference in Looking Time
+```{r}
+observed_diff_in_looking_means <- face_df %>% 
+  specify(formula = LookingTime ~ Condition) %>%
+  calculate(stat = "diff in means", order = c("Upright", "Inverted"))
+observed_diff_in_looking_means
+```
+
+Infants shown upright faces looked approximately 7.9 seconds longer on average than those shown inverted faces.
+
+### Permutation Test
+A two-sided permutation test was used, as there was no prior directional assumption about which condition would attract more attention.
+
+```{r}
+face_null <- face_df %>% 
+  specify(formula = LookingTime ~ Condition) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("Upright", "Inverted"))
+
+face_null %>%
+  get_p_value(obs_stat = observed_diff_in_looking_means, direction = "both")
+```
+
+### Interpretation
+The results show a statistically significant difference in looking time between the two conditions, suggesting that infants as young as one month old respond differently to upright versus inverted faces — consistent with the idea that basic face perception may be innate.
+
+## Analysis 2: Mirror-Tracing Therapy for Phantom Limb Pain
+This analysis evaluates the effectiveness of mirror-tracing therapy as a supplement to standard pain management for individuals experiencing phantom limb pain following arm amputation. Pain was rated on a 0–10 scale after two months of treatment.
+
+### Acquire Data
+```{r}
+pain_df <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/pain_df.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(pain_df)
+```
+
+```{r}
+pain_df %>% 
+  ggplot(aes(x = Condition, y = Pain)) +
+  geom_boxplot() +
+  geom_point(position = position_jitter(width = 0.1)) +
+  ylim(0,10)
+```
+
+### Observed Difference in Pain
+```{r}
+observed_diff_in_pain_means <- pain_df %>% 
+  specify(formula = Pain ~ Condition) %>%
+  calculate(stat = "diff in means", order = c("Treatment", "Control"))
+observed_diff_in_pain_means
+```
+
+The mirror-therapy group reported average pain scores approximately 1.3 points lower than the control group.
+
+### Permutation Test
+A left-sided test was used, reflecting the directional hypothesis that mirror therapy reduces pain relative to control.
+
+```{r}
+pain_null <- pain_df %>% 
+  specify(formula = Pain ~ Condition) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("Treatment", "Control"))
+
+pain_null %>%
+  get_p_value(obs_stat = observed_diff_in_pain_means, direction = "left")
+```
+
+### Interpretation
+The results provide significant evidence that mirror-tracing therapy is effective at reducing phantom limb pain relative to standard treatment alone.
+
+## Analysis 3: Shadow Perception and Color Interpretation of "The Dress"
+This analysis examines the viral "The Dress" optical illusion — a photograph perceived as either white-gold or blue-black depending on the viewer. One hypothesis suggests that viewers who perceive the dress as being in shadow are more likely to see it as white-gold. A permutation test was used to evaluate whether this association holds in a sample of 500 survey respondents.
+
+### Acquire Data
+```{r}
+dress_dat <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/dress_dat.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(dress_dat)
+```
+
+```{r}
+dress_dat %>%
+  ggplot(aes(SawShadow, fill = ColorReported)) + 
+  geom_bar() +
+  labs(title = "Reported Color Split by Shadow Assumptions")
+```
+
+### Observed Difference in Proportions
+```{r}
+obs_diff_prop <- dress_dat %>% 
+  specify(formula = ColorReported ~ SawShadow, success = "White-Gold") %>%
+  calculate(stat = "diff in props", order = c("Yes", "No"))
+obs_diff_prop
+```
+
+Participants who perceived the dress as being in shadow reported seeing white-gold approximately 23% more often than those who did not.
+
+### Permutation Test
+A right-sided test was used, reflecting the directional hypothesis that shadow perception increases white-gold reports.
+
+```{r}
+dress_null <- dress_dat %>% 
+  specify(formula = ColorReported ~ SawShadow, success = "White-Gold") %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in props", order = c("Yes", "No"))
+
+dress_null %>%
+  get_p_value(obs_stat = obs_diff_prop, direction = "right")
+```
+
+### Interpretation
+The results provide significant evidence that individuals who perceive the dress as being in shadow are more likely to report seeing it as white-gold, supporting the shadow-assumption hypothesis of color perception in this illusion.
+
+## Analysis 4: Contralateral Hippocampal Volume and Epilepsy Duration
+This final analysis revisits the epilepsy dataset to test whether the contralateral hippocampus — the side opposite to the seizure origin — shows any significant linear relationship with years since diagnosis. Unlike the ipsilateral side, the contralateral hippocampus is not directly exposed to seizure activity, making it a meaningful comparison case.
+
+### Acquire Data
+```{r}
+epilepsy_dat <- read.csv("https://raw.githubusercontent.com/cgmr-asu/NEU290/main/EpilepsyHC.csv")
+```
+
+### Explore Data
+```{r}
+glimpse(epilepsy_dat)
+```
+
+```{r}
+epilepsy_dat %>%
+  ggplot(aes(x = Years, y = ContralateralHC)) + 
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Contralateral HC Volume based on Years since Epilepsy Diagnosis")
+```
+
+### Observed Slope
+```{r}
+obs_slope_chc_years <- epilepsy_dat %>% 
+  specify(formula = ContralateralHC ~ Years) %>%
+  calculate(stat = "slope")
+obs_slope_chc_years
+```
+
+### Permutation Test
+A two-sided test was used, as the goal was to detect any linear relationship — positive or negative — between contralateral hippocampal volume and disease duration.
+
+```{r}
+epilepsy_null <- epilepsy_dat %>% 
+  specify(formula = ContralateralHC ~ Years) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "slope")
+
+epilepsy_null %>%
+  get_p_value(obs_stat = obs_slope_chc_years, direction = "both")
+```
+
+### Interpretation
+The results do not provide significant evidence of a linear relationship between contralateral hippocampal volume and years since diagnosis. This contrasts with the ipsilateral side, which showed a consistent negative slope. Together, these findings suggest that hippocampal atrophy in epilepsy may be lateralized — concentrated on the seizure-origin side — rather than a global, symmetric process.
